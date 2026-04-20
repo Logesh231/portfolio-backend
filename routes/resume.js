@@ -8,56 +8,91 @@ const { cloudinary, uploadResumePDF } = require('../config/cloudinary');
 router.get('/', async (req, res) => {
     try {
         const resume = await Resume.findOne();
-        if (!resume) return res.status(404).json({ message: 'No resume found' });
+        if (!resume) {
+            return res.status(404).json({ message: 'No resume uploaded yet' });
+        }
         res.json(resume);
     } catch (err) {
+        console.error('GET /resume error:', err);
         res.status(500).json({ message: err.message });
     }
 });
 
-// ── POST upload or replace resume PDF (admin only) ────────────
-// uploadResumePDF.single('resume') → reads 'resume' field from multipart form
-router.post('/', verifyToken, adminOnly,
-    uploadResumePDF.single('resume'),
+// ── POST upload resume PDF (admin only) ──────────────────────
+router.post('/',
+    verifyToken,
+    adminOnly,
+    (req, res, next) => {
+        // Run multer upload — catch multer-level errors separately
+        uploadResumePDF.single('resume')(req, res, (err) => {
+            if (err) {
+                console.error('Multer/Cloudinary upload error:', err);
+                return res.status(500).json({
+                    message: 'Upload failed: ' + err.message
+                });
+            }
+            next();
+        });
+    },
     async (req, res) => {
         try {
+            console.log('req.file:', req.file); // debug log
+
             if (!req.file) {
-                return res.status(400).json({ message: 'No PDF file uploaded' });
+                return res.status(400).json({ message: 'No PDF file received' });
             }
 
-            // Check if resume already exists
+            // multer-storage-cloudinary puts URL in req.file.path
+            // and public_id in req.file.filename
+            const pdfUrl      = req.file.path;
+            const pdfPublicId = req.file.filename;
+            const originalName = req.file.originalname;
+
+            if (!pdfUrl) {
+                return res.status(500).json({ message: 'Cloudinary did not return URL' });
+            }
+
+            // Check if resume already exists → update or create
             let resume = await Resume.findOne();
 
             if (resume) {
-                // Delete old PDF from Cloudinary
+                // Delete old PDF from Cloudinary before replacing
                 if (resume.pdfPublicId) {
-                    await cloudinary.uploader.destroy(
-                        resume.pdfPublicId,
-                        { resource_type: 'raw' }  // required for PDF
-                    );
+                    try {
+                        await cloudinary.uploader.destroy(resume.pdfPublicId, {
+                            resource_type: 'raw'
+                        });
+                        console.log('Old PDF deleted from Cloudinary');
+                    } catch (delErr) {
+                        // Non-fatal — continue even if old delete fails
+                        console.warn('Could not delete old PDF:', delErr.message);
+                    }
                 }
-                // Update existing resume record
-                resume.pdfUrl       = req.file.path;
-                resume.pdfPublicId  = req.file.filename;
-                resume.originalName = req.file.originalname;
+
+                resume.pdfUrl       = pdfUrl;
+                resume.pdfPublicId  = pdfPublicId;
+                resume.originalName = originalName;
                 resume.updatedAt    = Date.now();
                 await resume.save();
             } else {
-                // Create new resume record
                 resume = await Resume.create({
-                    pdfUrl:       req.file.path,
-                    pdfPublicId:  req.file.filename,
-                    originalName: req.file.originalname
+                    pdfUrl,
+                    pdfPublicId,
+                    originalName
                 });
             }
 
+            console.log('Resume saved:', resume.pdfUrl);
+
             res.json({
-                message:  'Resume uploaded successfully',
-                pdfUrl:   resume.pdfUrl,
-                fileName: resume.originalName
+                message:      'Resume uploaded successfully ✅',
+                pdfUrl:       resume.pdfUrl,
+                originalName: resume.originalName
             });
+
         } catch (err) {
-            res.status(400).json({ message: err.message });
+            console.error('POST /resume error:', err);
+            res.status(500).json({ message: err.message });
         }
     }
 );
