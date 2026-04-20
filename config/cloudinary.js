@@ -1,7 +1,6 @@
 const cloudinary = require('cloudinary').v2;
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const multer = require('multer');
-const streamifier = require("streamifier");
 
 // 🔥 Configure Cloudinary
 cloudinary.config({
@@ -15,17 +14,21 @@ const projectStorage = new CloudinaryStorage({
     cloudinary,
     params: async () => ({
         folder: 'portfolio/projects',
-        allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
         resource_type: 'image'
     })
+});
+
+const uploadProjectImage = multer({
+    storage: projectStorage,
+    limits: { fileSize: 5 * 1024 * 1024 }
 });
 
 // ── PDF MEMORY STORAGE ───────────────────────────────────────
 const uploadResumePDF = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+    limits: { fileSize: 10 * 1024 * 1024 },
     fileFilter: (req, file, cb) => {
-        console.log('File mimetype:', file.mimetype);
+        console.log("File mimetype:", file.mimetype);
 
         if (
             file.mimetype === 'application/pdf' ||
@@ -33,45 +36,55 @@ const uploadResumePDF = multer({
         ) {
             cb(null, true);
         } else {
-            cb(new Error(`Only PDF allowed. Got: ${file.mimetype}`), false);
+            cb(new Error("Only PDF allowed"), false);
         }
     }
 });
 
-// ── 🔥 FINAL CLOUDINARY UPLOAD FUNCTION (FIXED) ───────────────
-const uploadBufferToCloudinary = (buffer, filename) => {
+// ── 🔥 FINAL CLOUDINARY UPLOAD FUNCTION (NO BUGS) ─────────────
+const uploadBufferToCloudinary = (buffer) => {
     return new Promise((resolve, reject) => {
+
+        console.log("Cloudinary ENV CHECK:", {
+            cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+            api_key: process.env.CLOUDINARY_API_KEY ? "OK" : "MISSING",
+            api_secret: process.env.CLOUDINARY_API_SECRET ? "OK" : "MISSING"
+        });
 
         const stream = cloudinary.uploader.upload_stream(
             {
-                folder: 'portfolio/resume',
-                resource_type: 'raw',
-                public_id: filename.replace('.pdf', '') + "_" + Date.now()
+                folder: "portfolio/resume",
+                resource_type: "raw"
             },
             (error, result) => {
                 if (error) {
-                    console.error("❌ Cloudinary FULL ERROR:", error);
+                    console.error("❌ CLOUDINARY FULL ERROR:", error);
                     return reject(error);
                 }
                 if (!result) {
                     return reject(new Error("No result from Cloudinary"));
                 }
-                console.log("✅ Cloudinary upload success:", result.secure_url);
+
+                console.log("✅ Cloudinary success:", result.secure_url);
                 resolve(result);
             }
         );
 
-        streamifier.createReadStream(buffer).pipe(stream);
+        stream.on("error", (err) => {
+            console.error("❌ STREAM ERROR:", err);
+            reject(err);
+        });
+
+        stream.end(buffer);
     });
 };
 
 module.exports = {
     cloudinary,
-    uploadProjectImage: multer({ storage: projectStorage }),
+    uploadProjectImage,
     uploadResumePDF,
     uploadBufferToCloudinary
 };
-
 
 
 // const cloudinary = require('cloudinary').v2;
