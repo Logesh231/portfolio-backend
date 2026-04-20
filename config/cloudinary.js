@@ -57,7 +57,7 @@ const uploadBufferToCloudinary = (buffer, filename) => {
                 public_id:     filename.replace('.pdf', ''),
                 use_filename:  true,
                 overwrite:     true,
-                format:        'pdf'
+                // format:        'pdf'
             },
             (error, result) => {
                 if (error) {
