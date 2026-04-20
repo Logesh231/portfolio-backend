@@ -96,11 +96,13 @@ router.post('/',
                 resume = await Resume.create({ pdfUrl, pdfPublicId, originalName });
             }
 
-            res.json({
-                message:      'Resume uploaded successfully ✅',
-                pdfUrl:       resume.pdfUrl,
-                originalName: resume.originalName
-            });
+            res.json(resume);
+
+            // res.json({
+            //     message:      'Resume uploaded successfully ✅',
+            //     pdfUrl:       resume.pdfUrl,
+            //     originalName: resume.originalName
+            // });
 
         } catch (err) {
             console.error('❌ POST /resume error:', err.message);
