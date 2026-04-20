@@ -1,102 +1,116 @@
-const express = require("express");
-const router = express.Router();
+const express  = require('express');
+const router   = express.Router();
+const Resume   = require('../models/Resume');
+const { verifyToken, adminOnly } = require('../middleware/auth');
+const {
+    cloudinary,
+    uploadResumePDF,
+    uploadBufferToCloudinary
+} = require('../config/cloudinary');
 
-const Resume = require("../models/Resume");
-const { verifyToken, adminOnly } = require("../middleware/auth");
-
-const multer = require("multer");
-const cloudinary = require("cloudinary").v2;
-const fs = require("fs");
-
-// ── CLOUDINARY CONFIG ─────────────────────────────
-cloudinary.config({
-    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-    api_key: process.env.CLOUDINARY_API_KEY,
-    api_secret: process.env.CLOUDINARY_API_SECRET,
-});
-
-// ── MULTER CONFIG (SAFE FOR RENDER) ───────────────
-const upload = multer({ dest: "uploads/" });
-
-/* ────────────────────────────────────────────────
-   GET RESUME (PUBLIC)
-──────────────────────────────────────────────── */
-router.get("/", async (req, res) => {
+// ── GET resume (public) ──────────────────────────────────────
+router.get('/', async (req, res) => {
     try {
         const resume = await Resume.findOne();
         if (!resume) {
-            return res.status(404).json({ message: "No resume uploaded yet" });
+            return res.status(404).json({ message: 'No resume uploaded yet' });
         }
         res.json(resume);
     } catch (err) {
+        console.error('GET /resume error:', err.message);
         res.status(500).json({ message: err.message });
     }
 });
 
-/* ────────────────────────────────────────────────
-   UPLOAD RESUME (ADMIN ONLY)
-──────────────────────────────────────────────── */
-router.post(
-    "/",
+// ── POST upload resume PDF (admin only) ──────────────────────
+router.post('/',
     verifyToken,
     adminOnly,
-    upload.single("resume"),
+
+    // Step 1: multer reads file into memory buffer
+    (req, res, next) => {
+        uploadResumePDF.single('resume')(req, res, (err) => {
+            if (err) {
+                console.error('❌ Multer error:', err.message);
+                return res.status(400).json({ message: err.message });
+            }
+            next();
+        });
+    },
+
+    // Step 2: manually upload buffer to Cloudinary
     async (req, res) => {
         try {
-
-            console.log("FILE RECEIVED:", req.file);
+            console.log('--- POST /api/resume ---');
+            console.log('req.file present:', !!req.file);
 
             if (!req.file) {
-                return res.status(400).json({ message: "No file uploaded" });
-            }
-
-            // Upload PDF to Cloudinary as RAW file
-            const result = await cloudinary.uploader.upload(req.file.path, {
-                resource_type: "raw",
-                folder: "resumes"
-            });
-
-            // Delete local file after upload (important for Render)
-            fs.unlinkSync(req.file.path);
-
-            let resume = await Resume.findOne();
-
-            if (resume) {
-                // delete old file from cloudinary
-                if (resume.pdfPublicId) {
-                    await cloudinary.uploader.destroy(resume.pdfPublicId, {
-                        resource_type: "raw"
-                    });
-                }
-
-                resume.pdfUrl = result.secure_url;
-                resume.pdfPublicId = result.public_id;
-                resume.originalName = req.file.originalname;
-                resume.updatedAt = Date.now();
-
-                await resume.save();
-            } else {
-                resume = await Resume.create({
-                    pdfUrl: result.secure_url,
-                    pdfPublicId: result.public_id,
-                    originalName: req.file.originalname
+                return res.status(400).json({
+                    message: 'No file received. Make sure field name is "resume".'
                 });
             }
 
+            console.log('File name    :', req.file.originalname);
+            console.log('File size    :', req.file.size, 'bytes');
+            console.log('File mimetype:', req.file.mimetype);
+            console.log('Buffer length:', req.file.buffer ? req.file.buffer.length : 'NO BUFFER');
+
+            if (!req.file.buffer || req.file.buffer.length === 0) {
+                return res.status(400).json({ message: 'File buffer is empty' });
+            }
+
+            // Step 2a: delete old PDF from Cloudinary if exists
+            const existing = await Resume.findOne();
+            if (existing && existing.pdfPublicId) {
+                try {
+                    await cloudinary.uploader.destroy(existing.pdfPublicId, {
+                        resource_type: 'raw'
+                    });
+                    console.log('Old PDF deleted:', existing.pdfPublicId);
+                } catch (delErr) {
+                    console.warn('Could not delete old PDF (non-fatal):', delErr.message);
+                }
+            }
+
+            // Step 2b: upload buffer to Cloudinary
+            const originalName = req.file.originalname || 'resume.pdf';
+            const result = await uploadBufferToCloudinary(
+                req.file.buffer,
+                originalName
+            );
+
+            const pdfUrl      = result.secure_url;
+            const pdfPublicId = result.public_id;
+
+            console.log('✅ Uploaded to Cloudinary:', pdfUrl);
+
+            // Step 2c: save to MongoDB
+            let resume;
+            if (existing) {
+                existing.pdfUrl       = pdfUrl;
+                existing.pdfPublicId  = pdfPublicId;
+                existing.originalName = originalName;
+                existing.updatedAt    = Date.now();
+                resume = await existing.save();
+            } else {
+                resume = await Resume.create({ pdfUrl, pdfPublicId, originalName });
+            }
+
             res.json({
-                message: "Resume uploaded successfully ✅",
-                pdfUrl: resume.pdfUrl
+                message:      'Resume uploaded successfully ✅',
+                pdfUrl:       resume.pdfUrl,
+                originalName: resume.originalName
             });
 
         } catch (err) {
-            console.error("UPLOAD ERROR:", err);
-            res.status(500).json({ message: err.message });
+            console.error('❌ POST /resume error:', err.message);
+            console.error(err.stack);
+            res.status(500).json({ message: err.message || 'Server error during upload' });
         }
     }
 );
 
 module.exports = router;
-
 
 
 
