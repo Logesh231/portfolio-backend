@@ -31,7 +31,7 @@ const resumeStorage = new CloudinaryStorage({
         return {
             folder:          'portfolio/resume',
             resource_type:   'raw',   // MUST be 'raw' for PDF
-            format:          'pdf',
+            // format:          'pdf',
             use_filename:    true,
             unique_filename: true
         };
