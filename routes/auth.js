@@ -25,9 +25,7 @@ router.post('/verify-otp', async (req, res) => {
             return res.status(400).json({ message: 'No phone number in token' });
         }
 
-        // Step 2: Check if this phone number is the admin
-        // ✅ Set YOUR phone number here with country code (no spaces)
-        // const ADMIN_PHONE = process.env.ADMIN_PHONE_NUMBER; // e.g. +916369636340
+        const ADMIN_PHONE = process.env.ADMIN_PHONE_NUMBER; // e.g. +916369636340
 
         // if (phoneNumber !== ADMIN_PHONE) {
         //     return res.status(403).json({
