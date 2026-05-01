@@ -27,13 +27,26 @@ router.post('/verify-otp', async (req, res) => {
 
         // Step 2: Check if this phone number is the admin
         // ✅ Set YOUR phone number here with country code (no spaces)
-        const ADMIN_PHONE = process.env.ADMIN_PHONE_NUMBER; // e.g. +916369636340
+        // const ADMIN_PHONE = process.env.ADMIN_PHONE_NUMBER; // e.g. +916369636340
 
-        if (phoneNumber !== ADMIN_PHONE) {
-            return res.status(403).json({
-                message: 'Access denied. Not an admin number.'
-            });
-        }
+        // if (phoneNumber !== ADMIN_PHONE) {
+        //     return res.status(403).json({
+        //         message: 'Access denied. Not an admin number.'
+        //     });
+        // }
+        const normalize = (num) => (num || "").replace(/\s/g, "").trim();
+
+const phone = normalize(phoneNumber);
+const adminPhone = normalize(process.env.ADMIN_PHONE_NUMBER);
+
+console.log("PHONE:", phone);
+console.log("ADMIN:", adminPhone);
+
+if (phone !== adminPhone) {
+    return res.status(403).json({
+        message: "Access denied. Not an admin number."
+    });
+}
 
         // Step 3: Issue JWT token for admin
         const token = jwt.sign(
