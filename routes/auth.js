@@ -15,7 +15,6 @@ router.post('/verify-otp', async (req, res) => {
             return res.status(400).json({ message: 'Firebase ID token required' });
         }
 
-        // Step 1: Verify Firebase ID token
         const decoded = await admin.auth().verifyIdToken(idToken);
         const phoneNumber = decoded.phone_number;
 
@@ -25,45 +24,38 @@ router.post('/verify-otp', async (req, res) => {
             return res.status(400).json({ message: 'No phone number in token' });
         }
 
-        const ADMIN_PHONE = process.env.ADMIN_PHONE_NUMBER; // e.g. +916369636340
+        const normalize = (v) => (v || "").replace(/\s/g, "").trim();
 
-        // if (phoneNumber !== ADMIN_PHONE) {
-        //     return res.status(403).json({
-        //         message: 'Access denied. Not an admin number.'
-        //     });
-        // }
-        const normalize = (num) => (num || "").replace(/\s/g, "").trim();
+        const phone = normalize(phoneNumber);
+        const adminPhone = normalize(process.env.ADMIN_PHONE_NUMBER);
 
-const phone = normalize(phoneNumber);
-const adminPhone = normalize(process.env.ADMIN_PHONE_NUMBER);
+        console.log("PHONE:", phone);
+        console.log("ADMIN:", adminPhone);
 
-console.log("PHONE:", phone);
-console.log("ADMIN:", adminPhone);
+        // ✅ SINGLE CLEAN CHECK ONLY
+        if (phone !== adminPhone) {
+            return res.status(403).json({
+                message: "Access denied. Not admin number."
+            });
+        }
 
-if (phone !== adminPhone) {
-    return res.status(403).json({
-        message: "Access denied. Not an admin number."
-    });
-}
-
-        // Step 3: Issue JWT token for admin
         const token = jwt.sign(
             {
-                phone: phoneNumber,
-                role:  'ADMIN',
-                uid:   decoded.uid
+                phone: phone,
+                role: 'ADMIN',
+                uid: decoded.uid
             },
             process.env.JWT_SECRET,
             { expiresIn: '7d' }
         );
 
-        console.log('✅ Admin JWT issued for:', phoneNumber);
+        console.log('✅ Admin JWT issued for:', phone);
 
-        res.json({
+        return res.json({
             token,
-            role:     'ADMIN',
+            role: 'ADMIN',
             username: 'Admin',
-            phone:    phoneNumber
+            phone
         });
 
     } catch (err) {
@@ -72,13 +64,92 @@ if (phone !== adminPhone) {
         if (err.code === 'auth/id-token-expired') {
             return res.status(401).json({ message: 'OTP session expired. Try again.' });
         }
+
         if (err.code === 'auth/argument-error') {
             return res.status(400).json({ message: 'Invalid Firebase token.' });
         }
 
-        res.status(500).json({ message: err.message });
+        return res.status(500).json({ message: err.message });
     }
 });
+// router.post('/verify-otp', async (req, res) => {
+//     try {
+//         const { idToken } = req.body;
+
+//         if (!idToken) {
+//             return res.status(400).json({ message: 'Firebase ID token required' });
+//         }
+
+//         // Step 1: Verify Firebase ID token
+//         const decoded = await admin.auth().verifyIdToken(idToken);
+//         const phoneNumber = decoded.phone_number;
+
+//         console.log('Phone verified by Firebase:', phoneNumber);
+
+//         if (!phoneNumber) {
+//             return res.status(400).json({ message: 'No phone number in token' });
+//         }
+
+//         const ADMIN_PHONE = process.env.ADMIN_PHONE_NUMBER; // e.g. +916369636340
+
+//         // if (phoneNumber !== ADMIN_PHONE) {
+//         //     return res.status(403).json({
+//         //         message: 'Access denied. Not an admin number.'
+//         //     });
+//         // }
+//         const normalize = (v) => (v || "").replace(/\s/g, "").trim();
+
+//         const phone = normalize(phoneNumber);
+//         const admin = normalize(process.env.ADMIN_PHONE_NUMBER);
+
+//         console.log("PHONE:", phone);
+
+//         console.log("ADMIN:", admin);
+
+// if (phone !== admin) {
+//     return res.status(403).json({
+//         message: "Access denied. Not admin number."
+//     });
+// }
+// if (phone !== adminPhone) {
+//     return res.status(403).json({
+//         message: "Access denied. Not an admin number."
+//     });
+// }
+
+//         // Step 3: Issue JWT token for admin
+//         const token = jwt.sign(
+//             {
+//                 phone: phoneNumber,
+//                 role:  'ADMIN',
+//                 uid:   decoded.uid
+//             },
+//             process.env.JWT_SECRET,
+//             { expiresIn: '7d' }
+//         );
+
+//         console.log('✅ Admin JWT issued for:', phoneNumber);
+
+//         res.json({
+//             token,
+//             role:     'ADMIN',
+//             username: 'Admin',
+//             phone:    phoneNumber
+//         });
+
+//     } catch (err) {
+//         console.error('❌ verify-otp error:', err.message);
+
+//         if (err.code === 'auth/id-token-expired') {
+//             return res.status(401).json({ message: 'OTP session expired. Try again.' });
+//         }
+//         if (err.code === 'auth/argument-error') {
+//             return res.status(400).json({ message: 'Invalid Firebase token.' });
+//         }
+
+//         res.status(500).json({ message: err.message });
+//     }
+// });
 
 // ── GET /api/auth/check ──────────────────────────────────────
 // Simple route to check if JWT is still valid
