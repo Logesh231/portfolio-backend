@@ -7,6 +7,7 @@ const admin   = require('../config/firebase-admin'); // Firebase Admin SDK
 // Android sends Firebase ID token after OTP verified
 // Backend checks if the phone number is the admin number
 // If yes → returns JWT token with ADMIN role
+
 router.post('/verify-otp', async (req, res) => {
     try {
         const { idToken } = req.body;
