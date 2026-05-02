@@ -6,6 +6,8 @@ const admin = require('firebase-admin');
 
 if (!admin.apps.length) {
     try {
+        console.log("ENV CHECK:", process.env.FIREBASE_SERVICE_ACCOUNT ? "SET" : "NOT SET");
+
         const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
 
         admin.initializeApp({
